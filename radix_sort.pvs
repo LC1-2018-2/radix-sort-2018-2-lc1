@@ -1,0 +1,211 @@
+%*****************************
+%  Radix sort
+%
+% This theory contains a formalization of Radixsort for lists of
+% naturals.  It sorts naturals by the digits of their decimal
+% representation using as a stable sorting method merge sort. 
+% Authors: Thiago Mendonca Ferreira Ramos and Mauricio Ayala-Rincon
+%          Grupo de Teoria da Comptuacao
+%          Universidade de Brasilia
+% Last modified: 13 Oct 2018
+%*****************************
+
+radix_sort  
+		: THEORY
+
+  BEGIN
+
+IMPORTING sorting, ints@mod_lems
+
+% d_nth computes the dth digit in the decimal representation of n
+  d_nth(n, d : nat) : RECURSIVE below[10] =
+    IF d = 0 THEN  rem(10)(n)
+    ELSE d_nth( ndiv(n,10), d - 1)
+    ENDIF
+    MEASURE d
+
+% n_digits computes the number of digits in the decimal representation
+% of n
+ n_digits(n:nat) : RECURSIVE posnat =
+   IF n < 10 THEN 1
+   ELSE 1 + n_digits(ndiv(n, 10))
+   ENDIF
+   MEASURE n
+
+
+%************************************************************
+%*** QUESTION 01
+%%   Apply strong induction in n using
+%%   command (measure-induct+ "n" ("n"))
+%%   You will also need some type properties
+%%   of the remainder and integer division
+%%   (typepred "rem(a)(b)")   and  "ndiv(a,b)"
+%%
+%************************************************************
+
+% A simple algebraic property of n_digits.
+  d_digits_gt : CONJECTURE
+   FORALL(n : nat): 10^(n_digits(n)) > n
+
+% Three simple properties of remainder and exponential
+
+ rem_div_div :  LEMMA
+   FORALL(n : nat, a, b : posnat) :  ndiv(n, a * b) = ndiv(ndiv(n,a),b) 
+
+ rem_b_j_rem_div_times_b  : LEMMA
+   FORALL(n, d : nat, b: posnat) :
+      rem(b ^ d)((n - rem(b)(n))/b)  * b = rem(b ^ (d + 1))(n - rem(b)(n))
+
+ rem_b_j_rem_b  : LEMMA
+   FORALL(n : nat, d, b: posnat) :
+      rem(b ^ d)(n) = rem(b ^ d)(n - rem(b)(n))  + rem(b)(n)
+
+% This uses previous two properties and states that the (d)th digit times 10^d
+% plus the d less significative digits is equal to the (d+1) less signigicative
+% digits of a natural. 
+ d_exp_dec  :LEMMA
+  FORALL(n, d : nat) : d_nth(n, d) * 10 ^ d + rem(10 ^ d)(n) =
+       rem(10 ^ (1 + d))(n)
+
+
+ max_digits(l : list[nat] | length(l) >= 1)  : RECURSIVE posnat =
+   IF length(l) = 1 THEN n_digits(car(l))
+   ELSE max(n_digits(car(l)), max_digits(cdr(l)))
+   ENDIF
+   MEASURE length(l)
+
+% is_sorted_ud? holds for lists of naturals sorted until the dth digit in their
+% decimal representation.
+ is_sorted_ud?(l : list[nat], d : nat) : bool = FORALL(i : below[length(l)], j : below[length(l)] | i <= j) :
+    rem(10^d)(nth(l,i)) <= rem(10^d)(nth(l,j))
+
+% Merges lists of naturals non decreasingly by the dth digit in their
+% decimal representation
+merge(l1, l2 : list[nat], d : nat) : RECURSIVE list[nat] =
+IF null?(l1) OR null?(l2) THEN append(l1, l2)
+ELSIF d_nth(car(l1),d) <= d_nth(car(l2),d) THEN cons(car(l1), merge(cdr(l1),l2, d))
+ELSE cons(car(l2), merge(l1, cdr(l2), d))
+ENDIF
+MEASURE length(l1) + length(l2)
+
+% Merge sort algorithm by the dth digit
+merge_sort(l : list[nat], d :nat) : RECURSIVE list[nat] =
+ IF length(l) <= 1 THEN l 
+ ELSE merge(merge_sort(prefix(l,floor(length(l) / 2)), d), 
+                 merge_sort(suffix(l,floor(length(l)/2)), d), d)
+ ENDIF 
+MEASURE length(l)
+
+% Radixsort recursively sorts a list of naturals by its digist dth
+% until kth using merge_sort.
+ radixsort(l : list[nat], k : nat, d : nat | d <= k) : RECURSIVE list[nat] =
+     IF d = k THEN merge_sort(l,d)
+     ELSE radixsort(merge_sort(l,d), k, d+1)
+     ENDIF
+     MEASURE k - d
+
+% radixsort is the main function, that calls the previous ones to sort
+% a list of naturals starting from the 0th until the maximum
+% number of digits in the representations of the naturals in the list.
+% The last is computed using function max_digits. 
+ radixsort(l : list[nat]) : list[nat] =
+  IF length(l) <= 1 THEN l
+  ELSE radixsort(l, max_digits(l), 0)
+  ENDIF
+
+% sort_digit? holds when l is non decreasingly sorted by digit dth.
+  sort_digit?(l: list[nat], d : nat) :bool =
+  FORALL(i,j : below(length(l))) :
+  i <= j => d_nth(nth(l,i),d) <= d_nth(nth(l,j),d)
+
+% merge of list preserves length
+  merge_length : LEMMA
+  FORALL(l1, l2 : list[nat], d : nat):
+  length(merge(l1,l2,d)) = length(l1) + length(l2)
+
+% merge_sort preserves length
+  merge_sort_length : LEMMA
+  FORALL(l : list[nat], d : nat) :
+  length(l) = length(merge_sort(l,d))
+
+%**************************************************************
+%*** QUESTION 02
+%*** Apply strong induction in the addition of the
+%*** length of lists l1 and l2
+%*** Some lemmas on length of append available in the
+%*** sorting theory will be useful too. 
+%**************************************************************
+
+% Lemma states that merge permutes (preserves) data
+  merge_permutes : CONJECTURE
+  FORALL(l1, l2 : list[nat], d : nat):
+  permutations(append(l1,l2),merge(l1,l2,d))
+
+% Lemma states that merge_sort permutes (preserves) data.
+  merge_sort_permutes : LEMMA
+  FORALL(l : list[nat], d : nat):
+  permutations(l,merge_sort(l,d))
+
+% Lemma states that two lists sorted until the (d+1)th digit
+% that consist of sets of naturals smaller than or equal
+% and greater than or equal the other set, respctively,
+% and that are merged by their dth digit will give a
+% list that is sorted until the (d+1)th digit. 
+  merge_preserves_sort : LEMMA
+  FORALL(l1,l2 : list[nat], d : nat):
+  (is_sorted_ud?(l1,d+1) AND is_sorted_ud?(l2,d+1) AND
+   FORALL(i:below[length(l1)], j:below[length(l2)]) :
+    rem(10^d)(nth(l1,i))  <= rem(10^d)(nth(l2,j)) )  =>
+   is_sorted_ud?(merge(l1,l2,d),d+1)
+
+
+%************************************************************
+%**  QUESTION 03
+%** Again, apply strong induction, but this time
+%** in the length of list l
+%**
+%************************************************************
+
+% lists sorted until the dth digit that are merge sorted
+% by its dth digit will be sorted until ith (d+1)th digit.
+  merge_sort_d_sorts : CONJECTURE
+   FORALL(l : list[nat], d : nat) :
+    is_sorted_ud?(l,d)  => 
+    is_sorted_ud?(merge_sort(l,d),d+1)
+      
+% A list of naturals sorted until their dth digit that are radix sorted
+% from their dth until their kth digits are sorted until their
+% (k+1)th digit.
+%  PROOF OMITTED
+  radix_sort_d_sort   : LEMMA
+   FORALL(l : list[nat], k : nat, d:nat | d <= k) :
+     is_sorted_ud?(l,d) =>
+        is_sorted_ud?(radixsort(l, k, d), k+1) 
+
+% radixsort from the dth until the kth digit permutes (preserves) data.
+%  PROOF OMITTED
+  radixsort_permutes : LEMMA
+  FORALL(l : list[nat], k : nat, d : nat | d <=k):
+  permutations(l, radixsort(l,k,d))
+
+% max_digits of a list of naturals is enough to consider all numbers 
+% in the list by all their digits. 
+%  PROOF OMITTED
+  rem_max_digits : LEMMA
+  FORALL(l : list[nat] | length(l) >= 1, i : below[length(l)]):
+  rem(10^max_digits(l))(nth(l,i)) = nth(l,i)
+
+% radixsort permutes (preserves) data.
+%  PROOF OMITTED
+  radixsort_permutes2 : LEMMA
+  FORALL(l : list[nat]):
+  permutations(l,radixsort(l))
+
+% radixsort sorts lists of naturals
+%  PROOF OMITTED
+  Radixsort_sorts : LEMMA
+  FORALL(l : list[nat]):
+   is_sorted?(radixsort(l))
+
+  
+  END radix_sort
